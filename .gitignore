@@ -1,0 +1,25 @@
+# PlatformIO
+firmware/.pio/
+firmware/.vscode/
+
+# Secrets
+firmware/include/secrets.h
+
+# Python
+cli/__pycache__/
+cli/src/receipt_printer/__pycache__/
+cli/*.egg-info/
+cli/src/*.egg-info/
+*.pyc
+.venv/
+dist/
+build/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+*.swp
+*.swo

@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "receipt-printer"
+version = "1.0.0"
+description = "CLI for wireless receipt printer"
+requires-python = ">=3.10"
+dependencies = [
+    "typer>=0.9.0",
+    "httpx>=0.25.0",
+    "Pillow>=10.0.0",
+    "rich>=13.0.0",
+]
+
+[project.scripts]
+rp = "receipt_printer.main:app"
+
+[tool.setuptools.packages.find]
+where = ["src"]
