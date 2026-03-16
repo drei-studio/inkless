@@ -100,6 +100,19 @@ def todo(
 
 
 @app.command()
+def raw(
+    data: str = typer.Argument(help="Hex string of ESC/POS bytes, e.g. '1b40' for reset"),
+    printer: PrinterURL = DEFAULT_BASE_URL,
+):
+    """Send raw ESC/POS bytes (hex-encoded)."""
+    import base64
+    raw_bytes = bytes.fromhex(data)
+    b64 = base64.b64encode(raw_bytes).decode()
+    get_client(printer).print_raw(b64)
+    rprint(f"[green]Sent {len(raw_bytes)} bytes.[/green]")
+
+
+@app.command()
 def feed(
     lines: int = typer.Option(3, "--lines", "-n"),
     printer: PrinterURL = DEFAULT_BASE_URL,

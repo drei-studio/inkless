@@ -66,6 +66,13 @@ class PrinterClient:
         r.raise_for_status()
         return r.text
 
+    def print_raw(self, data_b64: str) -> dict:
+        r = httpx.post(self._url("/print/raw"), json={
+            "data": data_b64,
+        }, timeout=TIMEOUT)
+        r.raise_for_status()
+        return r.json()
+
     def feed(self, lines: int = 3) -> dict:
         r = httpx.post(self._url("/feed"), data={"lines": str(lines)}, timeout=TIMEOUT)
         r.raise_for_status()

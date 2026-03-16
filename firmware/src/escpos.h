@@ -29,6 +29,7 @@ public:
     void printQRCode(const char *data, uint8_t moduleSize = 4);
     void printRasterBitmap(const uint8_t *data, uint16_t width, uint16_t height);
     void printWrappedReversed(const char *text);
+    void sendRaw(const uint8_t *data, size_t len);
 
 private:
     HardwareSerial *_serial = nullptr;

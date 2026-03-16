@@ -324,6 +324,53 @@ void setupRoutes(AsyncWebServer &server, EscPosWriter *printer) {
         accumulateBody
     );
 
+    // --- POST /print/raw --- send raw ESC/POS bytes (base64-encoded)
+    server.on("/print/raw", HTTP_POST,
+        [printer](AsyncWebServerRequest *request) {
+            char *body = getBody(request);
+            if (!body) {
+                request->send(400, "application/json", "{\"error\":\"No body\"}");
+                return;
+            }
+
+            JsonDocument doc;
+            if (deserializeJson(doc, body, strlen(body))) {
+                freeBody(request);
+                request->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
+                return;
+            }
+
+            const char *b64 = doc["data"] | "";
+            if (strlen(b64) == 0) {
+                freeBody(request);
+                request->send(400, "application/json", "{\"error\":\"Missing 'data'\"}");
+                return;
+            }
+
+            // Decode base64
+            size_t b64Len = strlen(b64);
+            size_t outLen = 0;
+            mbedtls_base64_decode(NULL, 0, &outLen, (const uint8_t *)b64, b64Len);
+
+            uint8_t *raw = (uint8_t *)malloc(outLen);
+            if (!raw) {
+                freeBody(request);
+                request->send(500, "application/json", "{\"error\":\"Out of memory\"}");
+                return;
+            }
+
+            size_t decoded = 0;
+            mbedtls_base64_decode(raw, outLen, &decoded, (const uint8_t *)b64, b64Len);
+
+            printer->sendRaw(raw, decoded);
+            free(raw);
+            freeBody(request);
+            request->send(200, "application/json", "{\"status\":\"sent\"}");
+        },
+        NULL,
+        accumulateBody
+    );
+
     // --- POST /feed ---
     server.on("/feed", HTTP_POST, [printer](AsyncWebServerRequest *request) {
         uint8_t lines = 3;

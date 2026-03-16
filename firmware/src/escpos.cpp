@@ -180,6 +180,10 @@ void EscPosWriter::printWrappedReversed(const char *text) {
     sendCommand(rotateOff, sizeof(rotateOff));
 }
 
+void EscPosWriter::sendRaw(const uint8_t *data, size_t len) {
+    writeBytes(data, len);
+}
+
 // --- Internal helpers ---
 
 void EscPosWriter::sendCommand(const uint8_t *cmd, size_t len) {
