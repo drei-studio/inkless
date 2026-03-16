@@ -23,26 +23,37 @@ void setup() {
     Serial2.begin(PRINTER_BAUD, SERIAL_8N1, PRINTER_RX_PIN, PRINTER_TX_PIN);
     printer.begin(Serial2);
 
-    // Connect WiFi
+    // Connect WiFi (try primary, then fallback)
     WiFi.mode(WIFI_STA);
     WiFi.setHostname(MDNS_HOSTNAME);
-    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-    Serial.print("[wifi] Connecting");
 
-    unsigned long startAttempt = millis();
-    while (WiFi.status() != WL_CONNECTED && millis() - startAttempt < 30000) {
-        delay(500);
-        Serial.print(".");
+    const char* ssids[] = { WIFI_SSID, WIFI_SSID2 };
+    const char* passwords[] = { WIFI_PASSWORD, WIFI_PASSWORD2 };
+    const int numNetworks = (strlen(WIFI_SSID2) > 0) ? 2 : 1;
+
+    for (int i = 0; i < numNetworks; i++) {
+        Serial.printf("[wifi] Trying %s", ssids[i]);
+        WiFi.begin(ssids[i], passwords[i]);
+
+        unsigned long startAttempt = millis();
+        while (WiFi.status() != WL_CONNECTED && millis() - startAttempt < 15000) {
+            delay(500);
+            Serial.print(".");
+        }
+        Serial.println();
+
+        if (WiFi.status() == WL_CONNECTED) break;
+        Serial.printf("[wifi] Failed to connect to %s\n", ssids[i]);
+        WiFi.disconnect();
     }
-    Serial.println();
 
     if (WiFi.status() != WL_CONNECTED) {
-        Serial.println("[wifi] FAILED - restarting in 5s");
+        Serial.println("[wifi] All networks failed - restarting in 5s");
         delay(5000);
         ESP.restart();
     }
 
-    Serial.print("[wifi] Connected: ");
+    Serial.printf("[wifi] Connected to %s: ", WiFi.SSID().c_str());
     Serial.println(WiFi.localIP());
 
     // Start mDNS

@@ -1,6 +1,7 @@
 #include "routes.h"
 #include "web_ui.h"
 #include "config.h"
+#include "secrets.h"
 #include <ArduinoJson.h>
 #include <mbedtls/base64.h>
 #include <Update.h>
@@ -69,6 +70,15 @@ void setupRoutes(AsyncWebServer &server, EscPosWriter *printer) {
         doc["firmware"] = FW_VERSION;
         doc["hostname"] = MDNS_HOSTNAME;
         doc["uptime_s"] = millis() / 1000;
+        String json;
+        serializeJson(doc, json);
+        request->send(200, "application/json", json);
+    });
+
+    // --- GET /config : serve API key to browser ---
+    server.on("/config", HTTP_GET, [](AsyncWebServerRequest *request) {
+        JsonDocument doc;
+        doc["api_key"] = ANTHROPIC_API_KEY;
         String json;
         serializeJson(doc, json);
         request->send(200, "application/json", json);
