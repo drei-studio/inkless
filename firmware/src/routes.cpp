@@ -3,6 +3,7 @@
 #include "config.h"
 #include <ArduinoJson.h>
 #include <mbedtls/base64.h>
+#include <Update.h>
 #include <time.h>
 
 static String getFormattedDateTime() {
@@ -386,4 +387,50 @@ void setupRoutes(AsyncWebServer &server, EscPosWriter *printer) {
         printer->cut();
         request->send(200, "application/json", "{\"status\":\"cut\"}");
     });
+
+    // --- GET /update : OTA firmware update form ---
+    server.on("/update", HTTP_GET, [](AsyncWebServerRequest *request) {
+        request->send(200, "text/html",
+            "<!DOCTYPE html><html><body>"
+            "<h2>Firmware Update</h2>"
+            "<form method='POST' action='/update' enctype='multipart/form-data'>"
+            "<input type='file' name='firmware' accept='.bin'><br><br>"
+            "<input type='submit' value='Upload'>"
+            "</form></body></html>");
+    });
+
+    // --- POST /update : OTA firmware upload ---
+    server.on("/update", HTTP_POST,
+        // Response handler (called after upload completes)
+        [](AsyncWebServerRequest *request) {
+            bool success = !Update.hasError();
+            request->send(200, "text/plain", success ? "OK. Rebooting..." : "FAIL");
+            if (success) {
+                delay(500);
+                ESP.restart();
+            }
+        },
+        // Upload handler (called per chunk)
+        [](AsyncWebServerRequest *request, const String &filename, size_t index,
+           uint8_t *data, size_t len, bool final) {
+            if (index == 0) {
+                Serial.printf("[ota-http] Begin: %s\n", filename.c_str());
+                if (!Update.begin(UPDATE_SIZE_UNKNOWN)) {
+                    Update.printError(Serial);
+                }
+            }
+            if (!Update.hasError()) {
+                if (Update.write(data, len) != len) {
+                    Update.printError(Serial);
+                }
+            }
+            if (final) {
+                if (Update.end(true)) {
+                    Serial.printf("[ota-http] Success: %u bytes\n", index + len);
+                } else {
+                    Update.printError(Serial);
+                }
+            }
+        }
+    );
 }

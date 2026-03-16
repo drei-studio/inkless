@@ -82,3 +82,13 @@ class PrinterClient:
         r = httpx.post(self._url("/cut"), timeout=TIMEOUT)
         r.raise_for_status()
         return r.json()
+
+    def update(self, firmware_path: str) -> str:
+        with open(firmware_path, "rb") as f:
+            r = httpx.post(
+                self._url("/update"),
+                files={"firmware": ("firmware.bin", f, "application/octet-stream")},
+                timeout=60.0,
+            )
+        r.raise_for_status()
+        return r.text

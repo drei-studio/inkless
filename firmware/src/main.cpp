@@ -2,6 +2,7 @@
 #include <WiFi.h>
 #include <ESPmDNS.h>
 #include <ESPAsyncWebServer.h>
+#include <ArduinoOTA.h>
 #include <time.h>
 
 #include "config.h"
@@ -54,6 +55,23 @@ void setup() {
     configTime(UTC_OFFSET_SEC, DST_OFFSET_SEC, NTP_SERVER);
     Serial.println("[ntp] Syncing...");
 
+    // ArduinoOTA (enables `pio run -t upload -e ota` over WiFi)
+    ArduinoOTA.setHostname(MDNS_HOSTNAME);
+    ArduinoOTA.onStart([]() {
+        Serial.println("[ota] Update starting...");
+    });
+    ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+        Serial.printf("[ota] %u%%\r", progress * 100 / total);
+    });
+    ArduinoOTA.onEnd([]() {
+        Serial.println("\n[ota] Done, rebooting...");
+    });
+    ArduinoOTA.onError([](ota_error_t error) {
+        Serial.printf("[ota] Error[%u]\n", error);
+    });
+    ArduinoOTA.begin();
+    Serial.println("[ota] ArduinoOTA ready");
+
     // HTTP routes
     setupRoutes(server, &printer);
     server.begin();
@@ -76,6 +94,6 @@ void setup() {
 }
 
 void loop() {
-    // ESPAsyncWebServer handles requests in the background
+    ArduinoOTA.handle();
     delay(10);
 }

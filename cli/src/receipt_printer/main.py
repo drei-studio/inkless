@@ -127,5 +127,31 @@ def cut(printer: PrinterURL = DEFAULT_BASE_URL):
     get_client(printer).cut()
 
 
+@app.command()
+def update(
+    firmware: str = typer.Argument(help="Path to firmware .bin file"),
+    printer: PrinterURL = DEFAULT_BASE_URL,
+):
+    """Upload firmware over-the-air."""
+    from pathlib import Path
+
+    path = Path(firmware)
+    if not path.exists():
+        rprint(f"[red]File not found: {firmware}[/red]")
+        raise typer.Exit(1)
+    if not path.suffix == ".bin":
+        rprint(f"[yellow]Warning: expected .bin file, got {path.suffix}[/yellow]")
+
+    size_kb = path.stat().st_size / 1024
+    rprint(f"Uploading {path.name} ({size_kb:.0f} KB)...")
+    try:
+        result = get_client(printer).update(str(path))
+        rprint(f"[green]{result}[/green]")
+        rprint("Printer is rebooting — wait a few seconds, then run [bold]rp status[/bold].")
+    except Exception as e:
+        rprint(f"[red]Update failed: {e}[/red]")
+        raise typer.Exit(1)
+
+
 if __name__ == "__main__":
     app()
