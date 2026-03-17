@@ -467,8 +467,24 @@ function renderHistory() {
       '</div>' +
       '<p class="text-xs text-gray-500 truncate mt-0.5">' + escapeHtml(inputSummary.substring(0, 60)) + '</p>' +
       '<pre class="history-content mt-2 p-2 bg-white rounded text-xs text-gray-600 whitespace-pre-wrap font-mono">' + escapeHtml(item.output) + '</pre>' +
+      '<button class="history-content mt-1 w-full text-xs bg-gray-200 text-gray-700 py-1.5 rounded-lg hover:bg-gray-300" onclick="event.stopPropagation();reprintHistory(' + i + ')">Reprint</button>' +
     '</div>';
   }).join('');
+}
+
+async function reprintHistory(index) {
+  const history = getHistory();
+  if (!history[index]) return;
+  const text = history[index].output;
+  try {
+    const res = await fetch('/print/text', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({text: sanitize(text)})
+    });
+    if (res.ok) showStatus('Reprinted!', 'text-green-600');
+    else showStatus('Reprint failed', 'text-red-500');
+  } catch (err) { showStatus('Reprint failed: ' + err.message, 'text-red-500'); }
 }
 
 function clearHistory() {
