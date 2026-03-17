@@ -125,23 +125,26 @@ async def generate(request: Request):
 async def print_text(text: str):
     """Send text to the printer via its HTTP API."""
     async with httpx.AsyncClient() as client:
-        await client.post(f"{PRINTER_URL}/print/text", json={"text": text}, timeout=10.0)
+        r = await client.post(f"{PRINTER_URL}/print/text", json={"text": text}, timeout=10.0)
+        r.raise_for_status()
 
 
 async def print_logo():
     """Print the logo on the printer."""
     async with httpx.AsyncClient() as client:
-        await client.post(f"{PRINTER_URL}/print/logo/raster", timeout=30.0)
+        r = await client.post(f"{PRINTER_URL}/print/logo/raster", timeout=30.0)
+        r.raise_for_status()
 
 
 async def print_qrcode(data: str, size: int = 4):
     """Print a QR code on the printer."""
     async with httpx.AsyncClient() as client:
-        await client.post(
+        r = await client.post(
             f"{PRINTER_URL}/print/qrcode",
             json={"data": data, "size": size},
             timeout=10.0,
         )
+        r.raise_for_status()
 
 
 class PrintRequest(BaseModel):
@@ -210,25 +213,40 @@ async def print_dayend(req: DayEndRequest):
 
     prompt = DAYEND_PROMPT.format(progress=req.progress)
 
-    response = await ai_client.messages.create(
-        model="claude-haiku-4-5-20251001",
-        max_tokens=500,
-        system=DAYEND_SYSTEM,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    receipt_body = response.content[0].text
+    try:
+        response = await ai_client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=500,
+            system=DAYEND_SYSTEM,
+            messages=[{"role": "user", "content": prompt}],
+        )
+    except anthropic.RateLimitError as e:
+        return JSONResponse(status_code=429, content={"error": {"message": str(e)}})
+    except anthropic.AuthenticationError as e:
+        return JSONResponse(status_code=401, content={"error": {"message": str(e)}})
+    except Exception as e:
+        log.exception("Day end generation error")
+        return JSONResponse(status_code=500, content={"error": {"message": str(e)}})
 
+    if not response.content or not hasattr(response.content[0], "text"):
+        return JSONResponse(status_code=500, content={"error": {"message": "No text in AI response"}})
+
+    receipt_body = response.content[0].text
     header = f"{date_str}, {time_str}\n"
     full_receipt = header + receipt_body
 
     await print_logo()
     await print_text(full_receipt)
+    # Extra feed so the receipt can be torn off
+    async with httpx.AsyncClient() as client:
+        await client.post(f"{PRINTER_URL}/feed", data={"lines": "4"}, timeout=10.0)
 
     return {"status": "printed", "text": full_receipt}
 
 
 def main():
-    uvicorn.run("server:app", host="0.0.0.0", port=8100, reload=True)
+    reload = os.environ.get("INKLESS_DEV", "").lower() in ("1", "true")
+    uvicorn.run("server:app", host="0.0.0.0", port=8100, reload=reload)
 
 
 if __name__ == "__main__":

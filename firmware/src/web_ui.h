@@ -51,13 +51,15 @@ const char WEB_UI_HTML[] PROGMEM = R"rawliteral(
 <div class="w-full max-w-md">
 
   <!-- Mode icons -->
-  <div class="flex justify-center gap-4 mb-4">
+  <div class="flex justify-center items-center gap-3 mb-4">
     <div class="mode-icon active bg-teal-100 text-teal-700" onclick="goTo(0)" title="Your Plot">&#127793;</div>
     <div class="mode-icon bg-amber-100 text-amber-700" onclick="goTo(1)" title="Harvest">&#127805;</div>
     <div class="mode-icon bg-pink-100 text-pink-700" onclick="goTo(2)" title="Talk Well Behind My Back">&#128144;</div>
     <div class="mode-icon bg-emerald-100 text-emerald-700" onclick="goTo(3)" title="If You Were a Plant">&#129716;</div>
-    <div class="mode-icon bg-gray-200 text-gray-700" onclick="goTo(4)" title="Print">&#9998;</div>
-    <div class="mode-icon bg-red-100 text-red-700" onclick="goTo(5)" title="Debug">&#128295;</div>
+    <div class="w-px h-8 bg-gray-300 mx-1"></div>
+    <div class="mode-icon bg-violet-100 text-violet-700" onclick="goTo(4)" title="Day End">&#127769;</div>
+    <div class="mode-icon bg-gray-200 text-gray-700" onclick="goTo(5)" title="Print">&#9998;</div>
+    <div class="mode-icon bg-red-100 text-red-700" onclick="goTo(6)" title="Debug">&#128295;</div>
   </div>
 
   <div class="relative">
@@ -155,8 +157,30 @@ const char WEB_UI_HTML[] PROGMEM = R"rawliteral(
         </button>
       </div>
 
-      <!-- Slide 4: Free print -->
+      <!-- Slide 4: Day End -->
       <div class="slide" data-slide="4">
+        <h2 class="text-lg font-semibold text-violet-700 mb-1 text-center">Day End</h2>
+        <pre class="text-center text-violet-600 text-xs leading-tight mb-2 select-none">    *  .  *  .  *
+   . ` . ` . ` . `
+  ~~~~~~~~~~~~~~~~
+      \_______/
+       |     |
+       |  ~  |
+       |_____|</pre>
+        <p class="text-gray-500 text-sm text-center mb-3">What did you make progress on today?</p>
+        <div class="flex gap-2 mb-3">
+          <input id="dayEndInput" type="text" placeholder="e.g. finalized the pitch deck, had a great brainstorm..."
+            class="flex-1 border border-gray-300 rounded-lg p-3 text-gray-800 focus:ring-2 focus:ring-violet-400 focus:border-transparent">
+          <button onclick="startMic('dayEndInput')" class="mic-btn text-violet-600 hover:text-violet-800 px-2 text-xl" title="Voice input">&#127908;</button>
+        </div>
+        <button onclick="generateDayEnd()"
+          class="gen-btn w-full bg-violet-100 text-violet-700 py-3 rounded-lg font-medium hover:bg-violet-200 transition-colors">
+          Print Shutdown Receipt
+        </button>
+      </div>
+
+      <!-- Slide 5: Free print -->
+      <div class="slide" data-slide="5">
         <h2 class="text-lg font-semibold text-gray-800 mb-1 text-center">Print</h2>
         <p class="text-gray-500 text-sm text-center mb-4">Type anything</p>
         <form id="printForm">
@@ -179,8 +203,8 @@ const char WEB_UI_HTML[] PROGMEM = R"rawliteral(
         </div>
       </div>
 
-      <!-- Slide 5: Debug -->
-      <div class="slide" data-slide="5">
+      <!-- Slide 6: Debug -->
+      <div class="slide" data-slide="6">
         <h2 class="text-lg font-semibold text-red-700 mb-1 text-center">Debug</h2>
         <p class="text-gray-500 text-sm text-center mb-3">Test individual printer functions</p>
 
@@ -202,6 +226,8 @@ const char WEB_UI_HTML[] PROGMEM = R"rawliteral(
             class="bg-red-50 text-red-700 py-2 rounded-lg text-xs font-medium hover:bg-red-100 transition-colors">Text</button>
           <button onclick="debugTestSpacing()"
             class="bg-red-50 text-red-700 py-2 rounded-lg text-xs font-medium hover:bg-red-100 transition-colors">Spacing</button>
+          <button onclick="debugTestWeight()"
+            class="bg-red-50 text-red-700 py-2 rounded-lg text-xs font-medium hover:bg-red-100 transition-colors">Weight</button>
           <button onclick="debugTest('/feed', 'Feed')"
             class="bg-gray-100 text-gray-700 py-2 rounded-lg text-xs font-medium hover:bg-gray-200 transition-colors">Feed</button>
           <button onclick="debugTest('/cut', 'Cut')"
@@ -784,6 +810,46 @@ document.getElementById('behindBackName').addEventListener('keydown', (e) => {
 document.getElementById('harvestInput').addEventListener('keydown', (e) => {
   if (e.key === 'Enter') generateHarvest();
 });
+document.getElementById('dayEndInput').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') generateDayEnd();
+});
+
+// --- Day End ---
+async function generateDayEnd() {
+  const input = document.getElementById('dayEndInput');
+  const text = input.value.trim();
+  if (!text) return;
+
+  const genBtns = document.querySelectorAll('.gen-btn');
+  genBtns.forEach(b => b.disabled = true);
+  showStatus('Preparing your shutdown receipt...', 'text-violet-600', false);
+  hidePreview();
+
+  try {
+    const res = await fetch(getServerUrl() + '/api/print/dayend', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ progress: text })
+    });
+    if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error?.message || 'API error ' + res.status); }
+    const data = await res.json();
+    if (isDebug()) {
+      showPreview(data.text);
+      showStatus('Preview (not printed)', 'text-amber-600');
+    } else {
+      showStatus('Printed! Time to go home.', 'text-green-600');
+      confetti();
+    }
+    saveToHistory('Day End', {progress: text}, data.text);
+    input.value = '';
+  } catch (err) {
+    if (err.message === 'inkless-server not configured' || err.message === 'Failed to fetch')
+      showStatus('AI unavailable - inkless-server not reachable', 'text-red-500');
+    else showStatus(err.message || 'Generation failed', 'text-red-500');
+  }
+
+  genBtns.forEach(b => b.disabled = false);
+}
 
 // --- Debug log ---
 const debugLogEntries = [];
@@ -901,6 +967,33 @@ async function debugTestSpacing() {
     });
     showStatus('Spacing: ' + await res.text(), res.ok ? 'text-green-600' : 'text-red-500');
   } catch (err) { showStatus('Spacing: ' + err.message, 'text-red-500'); }
+}
+
+async function debugTestWeight() {
+  const lines = 'Font weight test\n--------------------------------\nNormal text line\n';
+  try {
+    await fetch('/print/text', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({text: 'Font weight test\n--------------------------------\nNormal weight'})
+    });
+    await fetch('/print/text', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({text: 'Bold weight', bold: true})
+    });
+    await fetch('/print/text', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({text: 'Double size', font_width: 2, font_height: 2})
+    });
+    await fetch('/print/text', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({text: 'Bold + double', bold: true, font_width: 2, font_height: 2})
+    });
+    showStatus('Weight: printed', 'text-green-600');
+  } catch (err) { showStatus('Weight: ' + err.message, 'text-red-500'); }
 }
 
 // --- Touch swipe ---
