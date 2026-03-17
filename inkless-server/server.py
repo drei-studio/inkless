@@ -1,16 +1,24 @@
 """inkless-server: AI proxy for the Inkless receipt printer."""
 
+import json
+import logging
 import os
 from contextlib import asynccontextmanager
+from datetime import datetime
+from typing import Optional
 
 import anthropic
+import httpx
 import uvicorn
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
+from pydantic import BaseModel
 
 load_dotenv()
+
+log = logging.getLogger("inkless-server")
 
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 PRINTER_URL = os.environ.get("PRINTER_URL", "http://printer.local")
@@ -22,9 +30,9 @@ ai_client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY) if ANTHROPIC_API
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     if not ANTHROPIC_API_KEY:
-        print("[inkless-server] WARNING: ANTHROPIC_API_KEY not set")
-    print(f"[inkless-server] Printer: {PRINTER_URL}")
-    print(f"[inkless-server] Ready on http://localhost:8100")
+        log.warning("ANTHROPIC_API_KEY not set")
+    log.info("Printer: %s", PRINTER_URL)
+    log.info("Ready on http://localhost:8100")
     yield
 
 
@@ -51,13 +59,19 @@ async def status():
 @app.post("/api/generate")
 async def generate(request: Request):
     """Proxy AI requests to Anthropic. Supports both streaming and non-streaming."""
-    if not ANTHROPIC_API_KEY:
+    if not ai_client:
         return JSONResponse(
             status_code=503,
             content={"error": {"message": "ANTHROPIC_API_KEY not configured"}},
         )
 
-    body = await request.json()
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse(
+            status_code=400,
+            content={"error": {"message": "Invalid JSON body"}},
+        )
 
     model = body.get("model", "claude-haiku-4-5-20251001")
     max_tokens = body.get("max_tokens", 500)
@@ -67,17 +81,20 @@ async def generate(request: Request):
     tools = body.get("tools", None)
 
     if stream:
-        # Streaming: proxy SSE events back to the browser
         async def event_stream():
-            async with ai_client.messages.stream(
-                model=model,
-                max_tokens=max_tokens,
-                system=system,
-                messages=messages,
-                tools=tools if tools is not None else anthropic.NOT_GIVEN,
-            ) as stream_resp:
-                async for event in stream_resp:
-                    yield f"data: {event.model_dump_json()}\n\n"
+            try:
+                async with ai_client.messages.stream(
+                    model=model,
+                    max_tokens=max_tokens,
+                    system=system,
+                    messages=messages,
+                    tools=tools if tools is not None else anthropic.NOT_GIVEN,
+                ) as stream_resp:
+                    async for event in stream_resp:
+                        yield f"data: {event.model_dump_json()}\n\n"
+            except Exception as e:
+                log.exception("Streaming error")
+                yield f"data: {json.dumps({'type': 'error', 'error': {'message': str(e)}})}\n\n"
 
         return StreamingResponse(
             event_stream(),
@@ -85,15 +102,129 @@ async def generate(request: Request):
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
     else:
-        # Non-streaming: return full response
-        response = await ai_client.messages.create(
-            model=model,
-            max_tokens=max_tokens,
-            system=system,
-            messages=messages,
-            tools=tools if tools is not None else anthropic.NOT_GIVEN,
+        try:
+            response = await ai_client.messages.create(
+                model=model,
+                max_tokens=max_tokens,
+                system=system,
+                messages=messages,
+                tools=tools if tools is not None else anthropic.NOT_GIVEN,
+            )
+            return response.model_dump()
+        except anthropic.RateLimitError as e:
+            return JSONResponse(status_code=429, content={"error": {"message": str(e)}})
+        except anthropic.AuthenticationError as e:
+            return JSONResponse(status_code=401, content={"error": {"message": str(e)}})
+        except Exception as e:
+            log.exception("Generate error")
+            return JSONResponse(status_code=500, content={"error": {"message": str(e)}})
+
+
+# --- Printer helpers ---
+
+async def print_text(text: str):
+    """Send text to the printer via its HTTP API."""
+    async with httpx.AsyncClient() as client:
+        await client.post(f"{PRINTER_URL}/print/text", json={"text": text}, timeout=10.0)
+
+
+async def print_logo():
+    """Print the logo on the printer."""
+    async with httpx.AsyncClient() as client:
+        await client.post(f"{PRINTER_URL}/print/logo/raster", timeout=30.0)
+
+
+async def print_qrcode(data: str, size: int = 4):
+    """Print a QR code on the printer."""
+    async with httpx.AsyncClient() as client:
+        await client.post(
+            f"{PRINTER_URL}/print/qrcode",
+            json={"data": data, "size": size},
+            timeout=10.0,
         )
-        return response.model_dump()
+
+
+class PrintRequest(BaseModel):
+    text: str
+    logo: bool = False
+    qr: Optional[str] = None
+
+
+@app.post("/api/print")
+async def print_receipt(req: PrintRequest):
+    """Print text (with optional logo and QR). Designed for iOS Shortcuts / automations."""
+    if req.logo:
+        await print_logo()
+    await print_text(req.text)
+    if req.qr:
+        await print_qrcode(req.qr)
+    return {"status": "printed"}
+
+
+class DayEndRequest(BaseModel):
+    progress: str
+
+
+DAYEND_SYSTEM = (
+    "You are a receipt printer at Strebergarten.studio, a design and product "
+    "studio. You print end-of-day shutdown receipts — a small ritual to mark "
+    "the transition from work to rest. Maximum 32 characters per line. No "
+    "markdown. Just the content, nothing else."
+)
+
+DAYEND_PROMPT = """Someone is about to leave the studio for the day. Here's what they said they made progress on:
+
+"{progress}"
+
+Write them a short, warm shutdown receipt. Format:
+
+CLOSING TIME
+strebergarten.studio
+--------------------------------
+Today you:
+(restate what they did in 2-3
+crisp bullet points, each
+starting with a verb)
+--------------------------------
+(a short, poetic 2-3 line
+reflection — something that
+honors the work without being
+cheesy. Think: grounding, not
+motivational poster.)
+--------------------------------
+Tomorrow is another plot.
+Leave this here. Go home.
+
+Keep it to 32 chars per line max. Be warm, grounded, honest. No markdown."""
+
+
+@app.post("/api/print/dayend")
+async def print_dayend(req: DayEndRequest):
+    """Generate and print an end-of-day shutdown receipt."""
+    if not ai_client:
+        return JSONResponse(status_code=503, content={"error": "API key not configured"})
+
+    now = datetime.now()
+    date_str = now.strftime("%A, %d %B %Y")
+    time_str = now.strftime("%H:%M")
+
+    prompt = DAYEND_PROMPT.format(progress=req.progress)
+
+    response = await ai_client.messages.create(
+        model="claude-haiku-4-5-20251001",
+        max_tokens=500,
+        system=DAYEND_SYSTEM,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    receipt_body = response.content[0].text
+
+    header = f"{date_str}, {time_str}\n"
+    full_receipt = header + receipt_body
+
+    await print_logo()
+    await print_text(full_receipt)
+
+    return {"status": "printed", "text": full_receipt}
 
 
 def main():

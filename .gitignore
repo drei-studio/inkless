@@ -4,7 +4,7 @@ firmware/.vscode/
 
 # Secrets
 firmware/include/secrets.h
-inkless-server/.env
+inkless-server/.env*
 
 # Python
 cli/__pycache__/
