@@ -65,7 +65,7 @@ void setupRoutes(AsyncWebServer &server, EscPosWriter *printer) {
     // --- GET / : Web UI ---
     server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
         AsyncResponseStream *response = request->beginResponseStream("text/html");
-        response->printf("<script>window.ANTHROPIC_API_KEY='%s';</script>", ANTHROPIC_API_KEY);
+        response->printf("<script>window.INKLESS_SERVER='%s';</script>", INKLESS_SERVER_URL);
         response->print(FPSTR(WEB_UI_HTML));
         request->send(response);
     });

@@ -4,12 +4,12 @@ firmware/.vscode/
 
 # Secrets
 firmware/include/secrets.h
+inkless-server/.env
 
 # Python
 cli/__pycache__/
 cli/src/receipt_printer/__pycache__/
-cli/*.egg-info/
-cli/src/*.egg-info/
+*.egg-info/
 *.pyc
 .venv/
 dist/

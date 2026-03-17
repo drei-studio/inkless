@@ -469,15 +469,10 @@ async function printLogo() {
   } catch (e) { /* skip logo if unavailable */ }
 }
 
-// --- API key ---
-let cachedApiKey = null;
-async function getApiKey() {
-  if (cachedApiKey) return cachedApiKey;
-  if (window.ANTHROPIC_API_KEY) {
-    cachedApiKey = window.ANTHROPIC_API_KEY;
-    return cachedApiKey;
-  }
-  throw new Error('No API key configured');
+// --- inkless-server AI proxy ---
+function getServerUrl() {
+  if (!window.INKLESS_SERVER) throw new Error('inkless-server not configured');
+  return window.INKLESS_SERVER;
 }
 
 // --- Simple generate (Haiku) ---
@@ -489,15 +484,9 @@ async function generate(prompt, mode, inputs, printLogoFirst) {
   hidePreview();
   try {
     if (printLogoFirst && !isDebug()) printLogo();  // fire-and-forget
-    const apiKey = await getApiKey();
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
+    const res = await fetch(getServerUrl() + '/api/generate', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true'
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: 'claude-haiku-4-5-20251001',
         max_tokens: 500,
@@ -514,7 +503,11 @@ async function generate(prompt, mode, inputs, printLogoFirst) {
       confetti();
     }
     else showStatus('Print failed', 'text-red-500');
-  } catch (err) { showStatus(err.message || 'Generation failed', 'text-red-500'); }
+  } catch (err) {
+    if (err.message === 'inkless-server not configured' || err.message === 'Failed to fetch')
+      showStatus('AI unavailable - inkless-server not reachable', 'text-red-500');
+    else showStatus(err.message || 'Generation failed', 'text-red-500');
+  }
   genBtns.forEach(b => b.disabled = false);
 }
 
@@ -596,15 +589,9 @@ async function generateHarvest() {
     // Fire logo print and AI generation in parallel
     if (!isDebug()) printLogo();  // fire-and-forget, prints while AI generates
 
-    const apiKey = await getApiKey();
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
+    const res = await fetch(getServerUrl() + '/api/generate', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true'
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: 'claude-haiku-4-5-20251001',
         max_tokens: 500,
@@ -640,7 +627,11 @@ async function generateHarvest() {
     } else {
       showStatus('Print failed', 'text-red-500');
     }
-  } catch (err) { showStatus(err.message || 'Generation failed', 'text-red-500'); }
+  } catch (err) {
+    if (err.message === 'inkless-server not configured' || err.message === 'Failed to fetch')
+      showStatus('AI unavailable - inkless-server not reachable', 'text-red-500');
+    else showStatus(err.message || 'Generation failed', 'text-red-500');
+  }
 
   genBtns.forEach(b => b.disabled = false);
 }
@@ -690,15 +681,9 @@ async function generateWithSearch(inputId, systemPrompt, statusColor, statusSear
   hidePreview();
 
   try {
-    const apiKey = await getApiKey();
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
+    const res = await fetch(getServerUrl() + '/api/generate', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true'
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
         max_tokens: 1024,
@@ -763,7 +748,11 @@ async function generateWithSearch(inputId, systemPrompt, statusColor, statusSear
       confetti(); input.value = '';
     }
     else showStatus('Print failed', 'text-red-500');
-  } catch (err) { showStatus(err.message || 'Generation failed', 'text-red-500'); }
+  } catch (err) {
+    if (err.message === 'inkless-server not configured' || err.message === 'Failed to fetch')
+      showStatus('AI unavailable - inkless-server not reachable', 'text-red-500');
+    else showStatus(err.message || 'Generation failed', 'text-red-500');
+  }
 
   genBtns.forEach(b => b.disabled = false);
 }

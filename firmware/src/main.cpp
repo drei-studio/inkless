@@ -88,6 +88,10 @@ void setup() {
     server.begin();
     Serial.println("[http] Server started on port 80");
 
+    // Let power rail stabilize before printing to avoid brownout reset loop.
+    // The 680µF capacitor helps with print bursts but boot-up still needs time.
+    delay(2000);
+
     // Print startup receipt
     printer.setAlign(1);
     printer.setBold(true);

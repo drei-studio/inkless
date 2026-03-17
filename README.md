@@ -183,11 +183,20 @@ The ESP32 needs to know where inkless-server is. Edit `firmware/include/secrets.
 #define INKLESS_SERVER_URL "http://YOUR_MAC_IP:8100"
 ```
 
-Find your IP with `ipconfig getifaddr en0`, then flash: `cd firmware && pio run -e ota -t upload`
+Find your IP with `ipconfig getifaddr en0`, then flash with OTA (requires existing firmware on the device — see [OTA Firmware Updates](#ota-firmware-updates)): `cd firmware && pio run -e ota -t upload`
 
 ### Deploy on a Mac Studio (always-on)
 
-Create a launchd plist so inkless-server starts on boot and restarts on crash:
+Create a launchd plist so inkless-server starts on boot and restarts on crash.
+
+Credentials (`ANTHROPIC_API_KEY`, `PRINTER_URL`) are read from `inkless-server/.env` automatically via `load_dotenv()` — never embed them in the plist. If you haven't set up `.env` yet:
+
+```bash
+cp inkless-server/.env.example inkless-server/.env
+# edit inkless-server/.env and fill in ANTHROPIC_API_KEY and PRINTER_URL
+```
+
+Then create the plist:
 
 ```bash
 cat > ~/Library/LaunchAgents/studio.inkless.server.plist << 'EOF'
@@ -210,13 +219,6 @@ cat > ~/Library/LaunchAgents/studio.inkless.server.plist << 'EOF'
     </array>
     <key>WorkingDirectory</key>
     <string>/path/to/receipt-printer/inkless-server</string>
-    <key>EnvironmentVariables</key>
-    <dict>
-        <key>ANTHROPIC_API_KEY</key>
-        <string>sk-ant-your-key-here</string>
-        <key>PRINTER_URL</key>
-        <string>http://printer.local</string>
-    </dict>
     <key>RunAtLoad</key>
     <true/>
     <key>KeepAlive</key>
@@ -232,13 +234,13 @@ EOF
 
 Then:
 ```bash
-# Update the WorkingDirectory and API key in the plist, then:
+# Update WorkingDirectory in the plist to the absolute path of inkless-server/, then:
 launchctl load ~/Library/LaunchAgents/studio.inkless.server.plist    # enable
 launchctl unload ~/Library/LaunchAgents/studio.inkless.server.plist  # disable
 tail -f /tmp/inkless-server.log                                      # view logs
 ```
 
-Update `INKLESS_SERVER_URL` in `secrets.h` to point to the Mac Studio's IP, then reflash the firmware.
+Update `INKLESS_SERVER_URL` in `secrets.h` to point to the Mac Studio's IP, then reflash the firmware (see [OTA Firmware Updates](#ota-firmware-updates)).
 
 ## OTA Firmware Updates
 
