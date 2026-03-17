@@ -122,10 +122,34 @@ async def generate(request: Request):
 
 # --- Printer helpers ---
 
+import re
+import unicodedata
+
+def sanitize(text: str) -> str:
+    """Replace Unicode characters with ASCII equivalents for the thermal printer."""
+    # Smart quotes
+    text = re.sub(r'[\u2018\u2019\u201A\u2032]', "'", text)
+    text = re.sub(r'[\u201C\u201D\u201E\u2033]', '"', text)
+    # Dashes
+    text = re.sub(r'[\u2013\u2014]', '-', text)
+    # Ellipsis
+    text = text.replace('\u2026', '...')
+    # Spaces
+    text = re.sub(r'[\u00A0\u2002\u2003\u2009]', ' ', text)
+    # Bullets
+    text = text.replace('\u2022', '-')
+    # Strip accents: é→e, ü→u, etc.
+    nfkd = unicodedata.normalize('NFKD', text)
+    text = ''.join(c for c in nfkd if not unicodedata.combining(c))
+    # Drop any remaining non-ASCII
+    text = re.sub(r'[^\x00-\x7F]', '', text)
+    return text
+
+
 async def print_text(text: str):
-    """Send text to the printer via its HTTP API."""
+    """Send sanitized text to the printer via its HTTP API."""
     async with httpx.AsyncClient() as client:
-        r = await client.post(f"{PRINTER_URL}/print/text", json={"text": text}, timeout=10.0)
+        r = await client.post(f"{PRINTER_URL}/print/text", json={"text": sanitize(text)}, timeout=10.0)
         r.raise_for_status()
 
 
@@ -235,11 +259,18 @@ async def print_dayend(req: DayEndRequest):
     header = f"{date_str}, {time_str}\n"
     full_receipt = header + receipt_body
 
-    await print_logo()
-    await print_text(full_receipt)
-    # Extra feed so the receipt can be torn off
-    async with httpx.AsyncClient() as client:
-        await client.post(f"{PRINTER_URL}/feed", data={"lines": "4"}, timeout=10.0)
+    try:
+        await print_logo()
+        await print_text(full_receipt)
+        # Extra feed so the receipt can be torn off
+        async with httpx.AsyncClient() as client:
+            await client.post(f"{PRINTER_URL}/feed", data={"lines": "6"}, timeout=10.0)
+    except httpx.HTTPError as e:
+        log.exception("Printer communication error")
+        return JSONResponse(
+            status_code=502,
+            content={"error": {"message": f"Printer unavailable: {e}"}, "text": full_receipt},
+        )
 
     return {"status": "printed", "text": full_receipt}
 
