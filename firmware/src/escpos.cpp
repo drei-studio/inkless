@@ -4,10 +4,14 @@ void EscPosWriter::begin(HardwareSerial &serial) {
     _serial = &serial;
     _mutex = xSemaphoreCreateMutex();
     reset();
-    // Heat settings: max dots=15, heat time=150, interval=250
-    uint8_t heat[] = {0x1B, 0x37, 0x0F, 0x96, 0xFA};
+    // Heat settings: max dots=11, heat time=200, interval=250
+    // Fewer dots = more current per dot = darker print
+    uint8_t heat[] = {0x1B, 0x37, 0x0B, 0xC8, 0xFA};
     sendCommand(heat, sizeof(heat));
-    // Tighter line spacing: ESC 3 22 (~2.75mm vs default ~4mm)
+    // Print density: DC2 # n — higher = darker (max 15)
+    uint8_t density[] = {0x12, 0x23, 0x0F};
+    sendCommand(density, sizeof(density));
+    // Tighter line spacing
     uint8_t lineSpacing[] = {0x1B, 0x33, 0x06};
     sendCommand(lineSpacing, sizeof(lineSpacing));
     // Select codepage 437 (US) to avoid Chinese character fallback

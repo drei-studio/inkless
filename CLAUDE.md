@@ -3,6 +3,9 @@
 - Flash OTA: `cd firmware && pio run -e ota -t upload`
 - Flash USB: `cd firmware && pio run -t upload`
 - PlatformIO project root is `firmware/`, not repo root
+- Start inkless-server: `cd inkless-server && /usr/bin/python3 -m uvicorn server:app --host 0.0.0.0 --port 8100`
+- inkless-server config: `inkless-server/.env` (API key, printer URL)
+- ESP32 points to inkless-server via `INKLESS_SERVER_URL` in `firmware/include/secrets.h`
 
 ## Prerequisites
 
