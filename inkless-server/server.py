@@ -3,6 +3,8 @@
 import json
 import logging
 import os
+import re
+import unicodedata
 from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Optional
@@ -122,9 +124,6 @@ async def generate(request: Request):
 
 # --- Printer helpers ---
 
-import re
-import unicodedata
-
 def sanitize(text: str) -> str:
     """Replace Unicode characters with ASCII equivalents for the thermal printer."""
     # Smart quotes
@@ -180,16 +179,21 @@ class PrintRequest(BaseModel):
 @app.post("/api/print")
 async def print_receipt(req: PrintRequest):
     """Print text (with optional logo and QR). Designed for iOS Shortcuts / automations."""
-    if req.logo:
-        await print_logo()
-    await print_text(req.text)
-    if req.qr:
-        await print_qrcode(req.qr)
+    try:
+        if req.logo:
+            await print_logo()
+        await print_text(req.text)
+        if req.qr:
+            await print_qrcode(req.qr)
+    except httpx.HTTPError as e:
+        log.exception("Printer communication error")
+        return JSONResponse(status_code=502, content={"error": {"message": f"Printer unavailable: {e}"}})
     return {"status": "printed"}
 
 
 class DayEndRequest(BaseModel):
     progress: str
+    debug: bool = False
 
 
 DAYEND_SYSTEM = (
@@ -259,18 +263,18 @@ async def print_dayend(req: DayEndRequest):
     header = f"{date_str}, {time_str}\n"
     full_receipt = header + receipt_body
 
-    try:
-        await print_logo()
-        await print_text(full_receipt)
-        # Extra feed so the receipt can be torn off
-        async with httpx.AsyncClient() as client:
-            await client.post(f"{PRINTER_URL}/feed", data={"lines": "6"}, timeout=10.0)
-    except httpx.HTTPError as e:
-        log.exception("Printer communication error")
-        return JSONResponse(
-            status_code=502,
-            content={"error": {"message": f"Printer unavailable: {e}"}, "text": full_receipt},
-        )
+    if not req.debug:
+        try:
+            await print_logo()
+            await print_text(full_receipt)
+            async with httpx.AsyncClient() as client:
+                await client.post(f"{PRINTER_URL}/feed", data={"lines": "6"}, timeout=10.0)
+        except httpx.HTTPError as e:
+            log.exception("Printer communication error")
+            return JSONResponse(
+                status_code=502,
+                content={"error": {"message": f"Printer unavailable: {e}"}, "text": full_receipt},
+            )
 
     return {"status": "printed", "text": full_receipt}
 

@@ -829,7 +829,7 @@ async function generateDayEnd() {
     const res = await fetch(getServerUrl() + '/api/print/dayend', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ progress: text })
+      body: JSON.stringify({ progress: text, debug: isDebug() })
     });
     if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error?.message || 'API error ' + res.status); }
     const data = await res.json();
@@ -970,7 +970,6 @@ async function debugTestSpacing() {
 }
 
 async function debugTestWeight() {
-  const lines = 'Font weight test\n--------------------------------\nNormal text line\n';
   try {
     await fetch('/print/text', {
       method: 'POST',
