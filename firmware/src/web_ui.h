@@ -200,8 +200,8 @@ const char WEB_UI_HTML[] PROGMEM = R"rawliteral(
             class="bg-red-50 text-red-700 py-2 rounded-lg text-xs font-medium hover:bg-red-100 transition-colors">QR Code</button>
           <button onclick="debugTestText()"
             class="bg-red-50 text-red-700 py-2 rounded-lg text-xs font-medium hover:bg-red-100 transition-colors">Text</button>
-          <button onclick="debugTest('/status', 'Status', 'GET')"
-            class="bg-red-50 text-red-700 py-2 rounded-lg text-xs font-medium hover:bg-red-100 transition-colors">Status</button>
+          <button onclick="debugTestSpacing()"
+            class="bg-red-50 text-red-700 py-2 rounded-lg text-xs font-medium hover:bg-red-100 transition-colors">Spacing</button>
           <button onclick="debugTest('/feed', 'Feed')"
             class="bg-gray-100 text-gray-700 py-2 rounded-lg text-xs font-medium hover:bg-gray-200 transition-colors">Feed</button>
           <button onclick="debugTest('/cut', 'Cut')"
@@ -900,6 +900,18 @@ async function debugTestText() {
     });
     showStatus('Text: ' + await res.text(), res.ok ? 'text-green-600' : 'text-red-500');
   } catch (err) { showStatus('Text: ' + err.message, 'text-red-500'); }
+}
+
+async function debugTestSpacing() {
+  const lines = 'Line spacing test\n--------------------------------\nYour harvest:\n- a clear next step\n- a new perspective\n--------------------------------\nRecipe: Fresh Start Stew\n1. Simmer on Monday\n2. Serve by Friday\n--------------------------------\nStrebergarten. Keep growing.\n';
+  try {
+    const res = await fetch('/print/text', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({text: lines})
+    });
+    showStatus('Spacing: ' + await res.text(), res.ok ? 'text-green-600' : 'text-red-500');
+  } catch (err) { showStatus('Spacing: ' + err.message, 'text-red-500'); }
 }
 
 // --- Touch swipe ---

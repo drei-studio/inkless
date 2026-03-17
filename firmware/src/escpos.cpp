@@ -8,7 +8,7 @@ void EscPosWriter::begin(HardwareSerial &serial) {
     uint8_t heat[] = {0x1B, 0x37, 0x0F, 0x96, 0xFA};
     sendCommand(heat, sizeof(heat));
     // Tighter line spacing: ESC 3 22 (~2.75mm vs default ~4mm)
-    uint8_t lineSpacing[] = {0x1B, 0x33, 0x16};
+    uint8_t lineSpacing[] = {0x1B, 0x33, 0x06};
     sendCommand(lineSpacing, sizeof(lineSpacing));
     // Select codepage 437 (US) to avoid Chinese character fallback
     uint8_t codepage[] = {0x1B, 0x74, 0x00};  // ESC t 0
@@ -262,7 +262,7 @@ void EscPosWriter::printBitImage(const uint8_t *data, uint16_t width, uint16_t h
         sendBitImageStrip24(_serial, colBuf, width);
     }
 
-    uint8_t defaultSpacing[] = {0x1B, 0x33, 0x16};  // ESC 3 22
+    uint8_t defaultSpacing[] = {0x1B, 0x33, 0x06};  // ESC 3 22
     sendCommand(defaultSpacing, sizeof(defaultSpacing));
     delay(100);
     Serial.println("[escpos] Bit image done");
@@ -344,7 +344,7 @@ void EscPosWriter::printTestPattern() {
     memset(colBuf, 0xFF, sizeof(colBuf));
     sendBitImageStrip24(_serial, colBuf, 384);
 
-    uint8_t defaultSpacing[] = {0x1B, 0x33, 0x16};  // ESC 3 22
+    uint8_t defaultSpacing[] = {0x1B, 0x33, 0x06};  // ESC 3 22
     sendCommand(defaultSpacing, sizeof(defaultSpacing));
     delay(100);
     Serial.println("[escpos] Test pattern printed");
