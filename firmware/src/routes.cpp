@@ -1,11 +1,14 @@
 #include "routes.h"
 #include "web_ui.h"
+#include "logo_data.h"
 #include "config.h"
 #include "secrets.h"
 #include <ArduinoJson.h>
 #include <mbedtls/base64.h>
 #include <Update.h>
 #include <time.h>
+
+static EscPosWriter *g_printer = nullptr;
 
 static String getFormattedDateTime() {
     time_t now;
@@ -57,10 +60,14 @@ static void freeBody(AsyncWebServerRequest *request) {
 }
 
 void setupRoutes(AsyncWebServer &server, EscPosWriter *printer) {
+    g_printer = printer;
 
     // --- GET / : Web UI ---
     server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
-        request->send(200, "text/html", WEB_UI_HTML);
+        AsyncResponseStream *response = request->beginResponseStream("text/html");
+        response->printf("<script>window.ANTHROPIC_API_KEY='%s';</script>", ANTHROPIC_API_KEY);
+        response->print(FPSTR(WEB_UI_HTML));
+        request->send(response);
     });
 
     // --- GET /status ---
@@ -75,13 +82,38 @@ void setupRoutes(AsyncWebServer &server, EscPosWriter *printer) {
         request->send(200, "application/json", json);
     });
 
-    // --- GET /config : serve API key to browser ---
-    server.on("/config", HTTP_GET, [](AsyncWebServerRequest *request) {
-        JsonDocument doc;
-        doc["api_key"] = ANTHROPIC_API_KEY;
-        String json;
-        serializeJson(doc, json);
-        request->send(200, "application/json", json);
+    // --- POST /print/test : diagnostic solid black bar ---
+    server.on("/print/test", HTTP_POST, [printer](AsyncWebServerRequest *request) {
+        printer->printTestPattern();
+        printer->feed(1);
+        request->send(200, "application/json", "{\"status\":\"printed\",\"method\":\"test\"}");
+    });
+
+    // --- POST /print/logo/raster : row-by-row raster from PROGMEM ---
+    server.on("/print/logo/raster", HTTP_POST, [](AsyncWebServerRequest *request) {
+        xTaskCreate([](void *param) {
+            if (g_printer) {
+                g_printer->lock();
+                g_printer->printBitImageProgmem(LOGO_BITMAP, LOGO_W, LOGO_H);
+                g_printer->unlock();
+            }
+            vTaskDelete(NULL);
+        }, "logo_r", 4096, NULL, 1, NULL);
+        request->send(200, "application/json", "{\"status\":\"printed\",\"method\":\"raster\"}");
+    });
+
+    // --- POST /print/logo/inverted : inverted bits ---
+    server.on("/print/logo/inverted", HTTP_POST, [](AsyncWebServerRequest *request) {
+        xTaskCreate([](void *param) {
+            if (g_printer) {
+                g_printer->lock();
+                g_printer->printBitImageProgmemInverted(LOGO_BITMAP, LOGO_W, LOGO_H);
+                g_printer->feed(1);
+                g_printer->unlock();
+            }
+            vTaskDelete(NULL);
+        }, "logo_inv", 4096, NULL, 1, NULL);
+        request->send(200, "application/json", "{\"status\":\"printed\",\"method\":\"inverted\"}");
     });
 
     // --- POST /submit : Scribe-compatible endpoint ---
@@ -105,19 +137,29 @@ void setupRoutes(AsyncWebServer &server, EscPosWriter *printer) {
             date = getFormattedDateTime();
         }
 
-        // Print header (inverse, like Scribe)
-        printer->setAlign(1);
-        printer->setInverse(true);
-        printer->printLine((" " + date + " ").c_str());
-        printer->setInverse(false);
-        printer->setAlign(0);
-        printer->printLine("");
+        // Copy strings for the task (request object won't survive)
+        struct SubmitData { String message; String date; };
+        SubmitData *sd = new SubmitData{message, date};
 
-        // Print message upside-down so it reads naturally when torn off
-        printer->printWrappedReversed(message.c_str());
-        printer->feed(4);
+        xTaskCreate([](void *param) {
+            SubmitData *sd = (SubmitData *)param;
+            if (g_printer) {
+                g_printer->lock();
+                g_printer->setAlign(1);
+                g_printer->setInverse(true);
+                g_printer->printLine((" " + sd->date + " ").c_str());
+                g_printer->setInverse(false);
+                g_printer->setAlign(0);
+                g_printer->printLine("");
+                g_printer->printWrappedReversed(sd->message.c_str());
+                g_printer->feed(4);
+                g_printer->unlock();
+            }
+            Serial.println("[submit] " + sd->message);
+            delete sd;
+            vTaskDelete(NULL);
+        }, "submit", 8192, sd, 1, NULL);
 
-        Serial.println("[submit] " + message);
         request->send(200, "text/plain", "Printed!");
     });
 
@@ -144,26 +186,42 @@ void setupRoutes(AsyncWebServer &server, EscPosWriter *printer) {
                 return;
             }
 
-            bool bold = doc["bold"] | false;
-            bool underline = doc["underline"] | false;
-            uint8_t align = doc["align"] | 0;
-            uint8_t fontW = doc["font_width"] | 1;
-            uint8_t fontH = doc["font_height"] | 1;
-
-            printer->setAlign(align);
-            printer->setBold(bold);
-            printer->setUnderline(underline);
-            printer->setFontSize(fontW, fontH);
-
-            printer->printLine(text);
-
-            printer->setBold(false);
-            printer->setUnderline(false);
-            printer->setAlign(0);
-            printer->setFontSize(1, 1);
-            printer->feed(2);
+            struct TextData {
+                String text;
+                bool bold, underline;
+                uint8_t align, fontW, fontH;
+            };
+            TextData *td = new TextData{
+                String(text),
+                doc["bold"] | false,
+                doc["underline"] | false,
+                doc["align"] | 0,
+                doc["font_width"] | 1,
+                doc["font_height"] | 1
+            };
 
             freeBody(request);
+
+            xTaskCreate([](void *param) {
+                TextData *td = (TextData *)param;
+                if (g_printer) {
+                    g_printer->lock();
+                    g_printer->setAlign(td->align);
+                    g_printer->setBold(td->bold);
+                    g_printer->setUnderline(td->underline);
+                    g_printer->setFontSize(td->fontW, td->fontH);
+                    g_printer->printLine(td->text.c_str());
+                    g_printer->setBold(false);
+                    g_printer->setUnderline(false);
+                    g_printer->setAlign(0);
+                    g_printer->setFontSize(1, 1);
+                    g_printer->feed(1);
+                    g_printer->unlock();
+                }
+                delete td;
+                vTaskDelete(NULL);
+            }, "text", 8192, td, 1, NULL);
+
             request->send(200, "application/json", "{\"status\":\"printed\"}");
         },
         NULL,
@@ -281,11 +339,24 @@ void setupRoutes(AsyncWebServer &server, EscPosWriter *printer) {
             size_t decoded = 0;
             mbedtls_base64_decode(bitmap, outLen, &decoded, (const uint8_t *)b64, b64Len);
 
-            printer->printRasterBitmap(bitmap, width, height);
-            printer->feed(2);
-            free(bitmap);
-
             freeBody(request);
+
+            struct ImgData { uint8_t *bitmap; uint16_t width; uint16_t height; };
+            ImgData *id = new ImgData{bitmap, width, height};
+
+            xTaskCreate([](void *param) {
+                ImgData *id = (ImgData *)param;
+                if (g_printer) {
+                    g_printer->lock();
+                    g_printer->printRasterBitmap(id->bitmap, id->width, id->height);
+                    g_printer->feed(2);
+                    g_printer->unlock();
+                }
+                free(id->bitmap);
+                delete id;
+                vTaskDelete(NULL);
+            }, "img", 8192, id, 1, NULL);
+
             request->send(200, "application/json", "{\"status\":\"printed\"}");
         },
         NULL,
@@ -318,17 +389,27 @@ void setupRoutes(AsyncWebServer &server, EscPosWriter *printer) {
                 return;
             }
 
-            printer->setAlign(1);
-            printer->printQRCode(qrData, size);
-
-            if (strlen(label) > 0) {
-                printer->printLine(label);
-            }
-
-            printer->setAlign(0);
-            printer->feed(2);
-
+            struct QRData { String data; String label; uint8_t size; };
+            QRData *qd = new QRData{String(qrData), String(label), size};
             freeBody(request);
+
+            xTaskCreate([](void *param) {
+                QRData *qd = (QRData *)param;
+                if (g_printer) {
+                    g_printer->lock();
+                    g_printer->setAlign(1);
+                    g_printer->printQRCode(qd->data.c_str(), qd->size);
+                    if (qd->label.length() > 0) {
+                        g_printer->printLine(qd->label.c_str());
+                    }
+                    g_printer->setAlign(0);
+                    g_printer->feed(2);
+                    g_printer->unlock();
+                }
+                delete qd;
+                vTaskDelete(NULL);
+            }, "qr", 4096, qd, 1, NULL);
+
             request->send(200, "application/json", "{\"status\":\"printed\"}");
         },
         NULL,

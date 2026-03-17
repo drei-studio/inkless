@@ -5,7 +5,7 @@ from rich import print as rprint
 
 from .client import PrinterClient, DEFAULT_BASE_URL
 from .formatting import print_note, print_todo
-from .imaging import image_to_raster
+from .imaging import image_to_header, image_to_raster
 
 app = typer.Typer(help="Receipt Printer CLI")
 
@@ -97,6 +97,24 @@ def todo(
     """Print a todo checklist with empty checkboxes."""
     print_todo(get_client(printer), title, items)
     rprint("[green]Todo printed.[/green]")
+
+
+@app.command(name="logo-header")
+def logo_header(
+    image_path: str = typer.Argument(help="Path to source PNG image"),
+    output: str = typer.Option("logo_data.h", "--output", "-o", help="Output header file path"),
+    width: int = typer.Option(384, "--width", "-w", help="Logo width in dots (384 = full width, 128 = ~1/3)"),
+):
+    """Generate a logo_data.h C header from a PNG image."""
+    from pathlib import Path
+
+    if not Path(image_path).exists():
+        rprint(f"[red]File not found: {image_path}[/red]")
+        raise typer.Exit(1)
+
+    header = image_to_header(image_path, width=width)
+    Path(output).write_text(header, encoding="utf-8")
+    rprint(f"[green]Written {output}[/green]")
 
 
 @app.command()

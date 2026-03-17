@@ -2,11 +2,26 @@
 
 void EscPosWriter::begin(HardwareSerial &serial) {
     _serial = &serial;
+    _mutex = xSemaphoreCreateMutex();
     reset();
     // Heat settings: max dots=15, heat time=150, interval=250
     uint8_t heat[] = {0x1B, 0x37, 0x0F, 0x96, 0xFA};
     sendCommand(heat, sizeof(heat));
+    // Tighter line spacing: ESC 3 22 (~2.75mm vs default ~4mm)
+    uint8_t lineSpacing[] = {0x1B, 0x33, 0x16};
+    sendCommand(lineSpacing, sizeof(lineSpacing));
+    // Select codepage 437 (US) to avoid Chinese character fallback
+    uint8_t codepage[] = {0x1B, 0x74, 0x00};  // ESC t 0
+    sendCommand(codepage, sizeof(codepage));
     delay(500);
+}
+
+void EscPosWriter::lock() {
+    if (_mutex) xSemaphoreTake(_mutex, portMAX_DELAY);
+}
+
+void EscPosWriter::unlock() {
+    if (_mutex) xSemaphoreGive(_mutex);
 }
 
 void EscPosWriter::reset() {
@@ -107,22 +122,33 @@ void EscPosWriter::printQRCode(const char *data, uint8_t moduleSize) {
 void EscPosWriter::printRasterBitmap(const uint8_t *data, uint16_t width, uint16_t height) {
     uint16_t bytesPerRow = (width + 7) / 8;
 
-    // GS v 0 m xL xH yL yH
-    uint8_t cmd[] = {0x1D, 0x76, 0x30, 0x00,
-                     (uint8_t)(bytesPerRow & 0xFF),
-                     (uint8_t)((bytesPerRow >> 8) & 0xFF),
-                     (uint8_t)(height & 0xFF),
-                     (uint8_t)((height >> 8) & 0xFF)};
-    sendCommand(cmd, sizeof(cmd));
+    // Print in strips of 16 rows to avoid buffer overflow
+    const uint16_t STRIP_H = 16;
+    uint16_t rowsDone = 0;
 
-    // Stream bitmap data in chunks to avoid buffer overflow
-    size_t totalBytes = (size_t)bytesPerRow * height;
-    size_t offset = 0;
-    while (offset < totalBytes) {
-        size_t chunk = min((size_t)256, totalBytes - offset);
-        writeBytes(data + offset, chunk);
-        offset += chunk;
-        delay(20);  // let printer buffer drain
+    while (rowsDone < height) {
+        uint16_t stripRows = min((uint16_t)STRIP_H, (uint16_t)(height - rowsDone));
+
+        // GS v 0 m xL xH yL yH
+        uint8_t cmd[] = {0x1D, 0x76, 0x30, 0x00,
+                         (uint8_t)(bytesPerRow & 0xFF),
+                         (uint8_t)((bytesPerRow >> 8) & 0xFF),
+                         (uint8_t)(stripRows & 0xFF),
+                         (uint8_t)((stripRows >> 8) & 0xFF)};
+        sendCommand(cmd, sizeof(cmd));
+
+        size_t stripBytes = (size_t)bytesPerRow * stripRows;
+        const uint8_t *stripData = data + (size_t)rowsDone * bytesPerRow;
+        size_t offset = 0;
+        while (offset < stripBytes) {
+            size_t chunk = min((size_t)bytesPerRow, stripBytes - offset);
+            writeBytes(stripData + offset, chunk);
+            _serial->flush();  // wait for TX to fully drain
+            offset += chunk;
+            delay(20);
+        }
+        delay(200);  // let printer finish the strip
+        rowsDone += stripRows;
     }
     delay(100);
 }
@@ -182,6 +208,146 @@ void EscPosWriter::printWrappedReversed(const char *text) {
 
 void EscPosWriter::sendRaw(const uint8_t *data, size_t len) {
     writeBytes(data, len);
+}
+
+// --- ESC * bit-image printing ---
+// Uses ESC * 33 nL nH d1..dk — mode 33 (24-dot double density, 203x203 DPI)
+// Processes 24 rows at a time: 3 bytes per column (top, middle, bottom 8 dots).
+// This is the standard approach used by most ESC/POS image printing libraries.
+
+static void sendBitImageStrip24(HardwareSerial *serial, const uint8_t *colData, uint16_t nDots) {
+    // ESC * 33 nL nH — 24-dot double density
+    uint8_t cmd[] = {0x1B, 0x2A, 0x21,
+                     (uint8_t)(nDots & 0xFF),
+                     (uint8_t)((nDots >> 8) & 0xFF)};
+    serial->write(cmd, sizeof(cmd));
+    serial->write(colData, (size_t)nDots * 3);  // 3 bytes per column
+    serial->write('\n');
+    serial->flush();
+    delay(30);
+}
+
+// Helper: convert row-major bitmap to 24-dot column format for one strip
+static void rowsToColumns24(const uint8_t *rowData, uint16_t bytesPerRow,
+                            uint16_t width, uint16_t rowsInStrip,
+                            uint8_t *colBuf, bool invert) {
+    memset(colBuf, 0, (size_t)width * 3);
+    for (uint16_t x = 0; x < width; x++) {
+        uint8_t bitMask = 0x80 >> (x % 8);
+        uint16_t byteCol = x / 8;
+        for (uint16_t bit = 0; bit < rowsInStrip; bit++) {
+            bool pixel = rowData[bit * bytesPerRow + byteCol] & bitMask;
+            if (invert) pixel = !pixel;
+            if (pixel) {
+                // 3 bytes per column: byte 0 = top 8, byte 1 = mid 8, byte 2 = bottom 8
+                colBuf[x * 3 + bit / 8] |= (0x80 >> (bit % 8));
+            }
+        }
+    }
+}
+
+void EscPosWriter::printBitImage(const uint8_t *data, uint16_t width, uint16_t height) {
+    if (!_serial) return;
+
+    uint16_t bytesPerRow = (width + 7) / 8;
+    uint8_t colBuf[384 * 3];  // 3 bytes per column
+
+    uint8_t lineSpacing[] = {0x1B, 0x33, 0x18};  // ESC 3 24
+    sendCommand(lineSpacing, sizeof(lineSpacing));
+
+    for (uint16_t stripY = 0; stripY < height; stripY += 24) {
+        uint16_t rowsInStrip = min((uint16_t)24, (uint16_t)(height - stripY));
+        const uint8_t *stripData = data + (size_t)stripY * bytesPerRow;
+        rowsToColumns24(stripData, bytesPerRow, width, rowsInStrip, colBuf, false);
+        sendBitImageStrip24(_serial, colBuf, width);
+    }
+
+    uint8_t defaultSpacing[] = {0x1B, 0x33, 0x16};  // ESC 3 22
+    sendCommand(defaultSpacing, sizeof(defaultSpacing));
+    delay(100);
+    Serial.println("[escpos] Bit image done");
+}
+
+void EscPosWriter::printBitImageProgmem(const uint8_t *progmemData, uint16_t width, uint16_t height) {
+    if (!_serial) return;
+
+    uint16_t bytesPerRow = (width + 7) / 8;
+    const uint16_t STRIP_H = 16;
+    uint8_t rowBuf[48];  // one row, max 384 dots wide
+
+    uint16_t rowsDone = 0;
+    while (rowsDone < height) {
+        uint16_t stripRows = min((uint16_t)STRIP_H, (uint16_t)(height - rowsDone));
+
+        uint8_t cmd[] = {0x1D, 0x76, 0x30, 0x00,
+                         (uint8_t)(bytesPerRow & 0xFF),
+                         (uint8_t)((bytesPerRow >> 8) & 0xFF),
+                         (uint8_t)(stripRows & 0xFF),
+                         (uint8_t)((stripRows >> 8) & 0xFF)};
+        sendCommand(cmd, sizeof(cmd));
+
+        for (uint16_t r = 0; r < stripRows; r++) {
+            memcpy_P(rowBuf, progmemData + (size_t)(rowsDone + r) * bytesPerRow, bytesPerRow);
+            writeBytes(rowBuf, bytesPerRow);
+            _serial->flush();
+            delay(20);
+        }
+        delay(200);
+        rowsDone += stripRows;
+    }
+    delay(100);
+    Serial.println("[escpos] Bit image done (PROGMEM)");
+}
+
+void EscPosWriter::printBitImageProgmemInverted(const uint8_t *progmemData, uint16_t width, uint16_t height) {
+    if (!_serial) return;
+
+    uint16_t bytesPerRow = (width + 7) / 8;
+    const uint16_t STRIP_H = 16;
+    uint8_t rowBuf[48];  // one row, max 384 dots wide
+
+    uint16_t rowsDone = 0;
+    while (rowsDone < height) {
+        uint16_t stripRows = min((uint16_t)STRIP_H, (uint16_t)(height - rowsDone));
+
+        uint8_t cmd[] = {0x1D, 0x76, 0x30, 0x00,
+                         (uint8_t)(bytesPerRow & 0xFF),
+                         (uint8_t)((bytesPerRow >> 8) & 0xFF),
+                         (uint8_t)(stripRows & 0xFF),
+                         (uint8_t)((stripRows >> 8) & 0xFF)};
+        sendCommand(cmd, sizeof(cmd));
+
+        for (uint16_t r = 0; r < stripRows; r++) {
+            memcpy_P(rowBuf, progmemData + (size_t)(rowsDone + r) * bytesPerRow, bytesPerRow);
+            for (uint16_t b = 0; b < bytesPerRow; b++) rowBuf[b] ^= 0xFF;
+            writeBytes(rowBuf, bytesPerRow);
+            _serial->flush();
+            delay(20);
+        }
+        delay(200);
+        rowsDone += stripRows;
+    }
+    delay(100);
+    Serial.println("[escpos] Bit image done (inverted)");
+}
+
+// --- Diagnostic test pattern ---
+
+void EscPosWriter::printTestPattern() {
+    if (!_serial) return;
+
+    // Print 24 rows of solid black using ESC * mode 33
+    uint8_t lineSpacing[] = {0x1B, 0x33, 0x18};
+    sendCommand(lineSpacing, sizeof(lineSpacing));
+
+    uint8_t colBuf[384 * 3];
+    memset(colBuf, 0xFF, sizeof(colBuf));
+    sendBitImageStrip24(_serial, colBuf, 384);
+
+    uint8_t defaultSpacing[] = {0x1B, 0x33, 0x16};  // ESC 3 22
+    sendCommand(defaultSpacing, sizeof(defaultSpacing));
+    delay(100);
+    Serial.println("[escpos] Test pattern printed");
 }
 
 // --- Internal helpers ---

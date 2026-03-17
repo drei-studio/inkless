@@ -1,11 +1,14 @@
 #pragma once
 
 #include <Arduino.h>
+#include <freertos/semphr.h>
 #include "config.h"
 
 class EscPosWriter {
 public:
     void begin(HardwareSerial &serial);
+    void lock();
+    void unlock();
 
     // Reset
     void reset();
@@ -31,8 +34,17 @@ public:
     void printWrappedReversed(const char *text);
     void sendRaw(const uint8_t *data, size_t len);
 
+    // ESC * bit-image printing (widely supported)
+    void printBitImage(const uint8_t *data, uint16_t width, uint16_t height);
+    void printBitImageProgmem(const uint8_t *progmemData, uint16_t width, uint16_t height);
+    void printBitImageProgmemInverted(const uint8_t *progmemData, uint16_t width, uint16_t height);
+
+    // Diagnostic: solid black bar via ESC *
+    void printTestPattern();
+
 private:
     HardwareSerial *_serial = nullptr;
+    SemaphoreHandle_t _mutex = nullptr;
     void sendCommand(const uint8_t *cmd, size_t len);
     void writeBytes(const uint8_t *data, size_t len);
 };
