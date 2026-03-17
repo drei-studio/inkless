@@ -53,7 +53,7 @@ const char WEB_UI_HTML[] PROGMEM = R"rawliteral(
   <!-- Mode icons -->
   <div class="flex justify-center gap-4 mb-4">
     <div class="mode-icon active bg-teal-100 text-teal-700" onclick="goTo(0)" title="Your Plot">&#127793;</div>
-    <div class="mode-icon bg-amber-100 text-amber-700" onclick="goTo(1)" title="Harvest">&#129520;</div>
+    <div class="mode-icon bg-amber-100 text-amber-700" onclick="goTo(1)" title="Harvest">&#127805;</div>
     <div class="mode-icon bg-pink-100 text-pink-700" onclick="goTo(2)" title="Talk Well Behind My Back">&#128144;</div>
     <div class="mode-icon bg-emerald-100 text-emerald-700" onclick="goTo(3)" title="If You Were a Plant">&#129716;</div>
     <div class="mode-icon bg-gray-200 text-gray-700" onclick="goTo(4)" title="Print">&#9998;</div>
@@ -903,7 +903,7 @@ async function debugTestText() {
 }
 
 async function debugTestSpacing() {
-  const lines = 'Line spacing test\n--------------------------------\nYour harvest:\n- a clear next step\n- a new perspective\n--------------------------------\nRecipe: Fresh Start Stew\n1. Simmer on Monday\n2. Serve by Friday\n--------------------------------\nStrebergarten. Keep growing.\n';
+  const lines = 'Line spacing: ESC 3 6\n--------------------------------\nYour harvest:\n- a clear next step\n- a new perspective\n--------------------------------\nRecipe: Fresh Start Stew\n1. Simmer on Monday\n2. Serve by Friday\n--------------------------------\nStrebergarten. Keep growing.\n';
   try {
     const res = await fetch('/print/text', {
       method: 'POST',

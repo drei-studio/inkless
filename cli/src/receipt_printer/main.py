@@ -112,9 +112,13 @@ def logo_header(
         rprint(f"[red]File not found: {image_path}[/red]")
         raise typer.Exit(1)
 
-    header = image_to_header(image_path, width=width)
-    Path(output).write_text(header, encoding="utf-8")
-    rprint(f"[green]Written {output}[/green]")
+    try:
+        header = image_to_header(image_path, width=width)
+        Path(output).write_text(header, encoding="utf-8")
+        rprint(f"[green]Written {output}[/green]")
+    except Exception as e:
+        rprint(f"[red]Failed to generate header: {e}[/red]")
+        raise typer.Exit(1)
 
 
 @app.command()

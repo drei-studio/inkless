@@ -8,8 +8,10 @@ PRINTER_WIDTH = 384  # dots
 def composite_alpha_onto_white(img: Image.Image) -> Image.Image:
     """Composite transparent images onto a white background."""
     if img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info):
+        if img.mode == "P":
+            img = img.convert("RGBA")
         bg = Image.new("RGB", img.size, (255, 255, 255))
-        bg.paste(img, mask=img.split()[-1] if img.mode in ("RGBA", "LA") else None)
+        bg.paste(img, mask=img.split()[-1])
         return bg
     return img
 
