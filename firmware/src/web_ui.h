@@ -79,11 +79,8 @@ const char WEB_UI_HTML[] PROGMEM = R"rawliteral(
  [_____]     [_____]     [_____]
  |/////|     |/////|     |/////|</pre>
         <p class="text-gray-500 text-sm text-center mb-3">What brought you here today?</p>
-        <div class="flex gap-2 mb-3">
-          <input id="plotInput" type="text" placeholder="e.g. I need help shaping a product idea..."
-            class="flex-1 border border-gray-300 rounded-lg p-3 text-gray-800 focus:ring-2 focus:ring-teal-400 focus:border-transparent">
-          <button onclick="startMic('plotInput')" class="mic-btn text-teal-600 hover:text-teal-800 px-2 text-xl" title="Voice input">&#127908;</button>
-        </div>
+        <input id="plotInput" type="text" placeholder="e.g. I need help shaping a product idea..."
+          class="w-full border border-gray-300 rounded-lg p-3 text-gray-800 focus:ring-2 focus:ring-teal-400 focus:border-transparent mb-3">
         <button onclick="generatePlot()"
           class="gen-btn w-full bg-teal-100 text-teal-700 py-3 rounded-lg font-medium hover:bg-teal-200 transition-colors">
           Plan My Plot
@@ -103,11 +100,8 @@ const char WEB_UI_HTML[] PROGMEM = R"rawliteral(
    |~~~~~|
    |_____|</pre>
         <p class="text-gray-500 text-sm text-center mb-3">What are you taking with you?</p>
-        <div class="flex gap-2 mb-3">
-          <input id="harvestInput" type="text" placeholder="e.g. a clear next step, a new perspective on..."
-            class="flex-1 border border-gray-300 rounded-lg p-3 text-gray-800 focus:ring-2 focus:ring-amber-400 focus:border-transparent">
-          <button onclick="startMic('harvestInput')" class="mic-btn text-amber-600 hover:text-amber-800 px-2 text-xl" title="Voice input">&#127908;</button>
-        </div>
+        <input id="harvestInput" type="text" placeholder="e.g. a clear next step, a new perspective on..."
+          class="w-full border border-gray-300 rounded-lg p-3 text-gray-800 focus:ring-2 focus:ring-amber-400 focus:border-transparent mb-3">
         <button onclick="generateHarvest()"
           class="gen-btn w-full bg-amber-100 text-amber-700 py-3 rounded-lg font-medium hover:bg-amber-200 transition-colors">
           Print My Harvest
@@ -168,11 +162,8 @@ const char WEB_UI_HTML[] PROGMEM = R"rawliteral(
        |  ~  |
        |_____|</pre>
         <p class="text-gray-500 text-sm text-center mb-3">What did you make progress on today?</p>
-        <div class="flex gap-2 mb-3">
-          <input id="dayEndInput" type="text" placeholder="e.g. finalized the pitch deck, had a great brainstorm..."
-            class="flex-1 border border-gray-300 rounded-lg p-3 text-gray-800 focus:ring-2 focus:ring-violet-400 focus:border-transparent">
-          <button onclick="startMic('dayEndInput')" class="mic-btn text-violet-600 hover:text-violet-800 px-2 text-xl" title="Voice input">&#127908;</button>
-        </div>
+        <input id="dayEndInput" type="text" placeholder="e.g. finalized the pitch deck, had a great brainstorm..."
+          class="w-full border border-gray-300 rounded-lg p-3 text-gray-800 focus:ring-2 focus:ring-violet-400 focus:border-transparent mb-3">
         <button onclick="generateDayEnd()"
           class="gen-btn w-full bg-violet-100 text-violet-700 py-3 rounded-lg font-medium hover:bg-violet-200 transition-colors">
           Print Shutdown Receipt
@@ -676,39 +667,6 @@ async function generateHarvest() {
   }
 
   genBtns.forEach(b => b.disabled = false);
-}
-
-// --- Voice input (Web Speech API, Chrome) ---
-function startMic(inputId) {
-  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  const input = document.getElementById(inputId);
-  const btn = input.parentElement.querySelector('.mic-btn');
-  if (!SpeechRecognition) {
-    showStatus('Speech recognition is not supported in this browser.', 'text-red-500');
-    if (btn) btn.disabled = true;
-    return;
-  }
-  const recognition = new SpeechRecognition();
-  recognition.lang = 'en-US';
-  recognition.interimResults = true;
-  recognition.continuous = false;
-
-  btn.style.opacity = '1';
-  btn.classList.add('animate-pulse');
-
-  recognition.onresult = (e) => {
-    const transcript = Array.from(e.results).map(r => r[0].transcript).join('');
-    input.value = transcript;
-  };
-  recognition.onend = () => {
-    btn.style.opacity = '';
-    btn.classList.remove('animate-pulse');
-  };
-  recognition.onerror = () => {
-    btn.style.opacity = '';
-    btn.classList.remove('animate-pulse');
-  };
-  recognition.start();
 }
 
 // --- Streaming + web search helper with clarification loop ---
