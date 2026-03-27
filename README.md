@@ -1,8 +1,8 @@
-# Inkless
+# Inkless Possibilities
 
 A wireless thermal receipt printer powered by an ESP32 and a QR204 58mm thermal print mechanism. Print text, images, QR codes, and AI-generated receipts over WiFi from a browser or the command line.
 
-Built for [Strebergarten](https://strebergarten.studio), our innovation studio. The AI modes are garden-themed because that's us. Yours will be different and uniquely yours.
+Built for [Strebergarten](https://strebergarten.studio), our innovation studio. The AI modes are garden-themed because that's us. Yours will be different and uniquely yours. You won't get around cringey puns in this project...
 
 ## What it does
 
