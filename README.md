@@ -1,10 +1,17 @@
 # Inkless
 
-A wireless thermal receipt printer powered by an ESP32 and a QR204 58mm thermal print mechanism. Print text, images, QR codes, and receipts over WiFi from a browser or the command line.
+A wireless thermal receipt printer powered by an ESP32 and a QR204 58mm thermal print mechanism. Print text, images, QR codes, and AI-generated receipts over WiFi from a browser or the command line.
+
+Built for [Strebergarten](https://strebergarten.studio) — a design and product studio. The AI modes are garden-themed because that's us. Yours will be different.
+
+## What it does
+
+- **Web UI** at `http://printer.local` — type a message, hit print
+- **AI modes** — generate prints using Claude (affirmations, haikus, personalized notes, end-of-day rituals)
+- **CLI** (`rp` command) — print text, images, QR codes, notes, and todos from the terminal
+- **HTTP API** — full ESC/POS control over WiFi
 
 ## Hardware
-
-### Parts
 
 | Part | Notes |
 |------|-------|
@@ -21,23 +28,17 @@ ESP32 GND          ──→ QR204 GND
 5V supply           ──→ QR204 VH (printer power)
 ```
 
-The printer UART runs at **9600 baud** (8N1). GPIO16 (RX2) is reserved but the printer doesn't send data back.
+The printer UART runs at **9600 baud** (8N1).
 
 ## Setup
 
-### 1. Clone and configure WiFi
+> **Note:** This project was built for a specific hardware setup and hasn't been tested as a standalone kit yet. The instructions below describe the general flow, but you may need to adapt things. If you run into issues, open an issue.
+
+### 1. Configure WiFi
 
 ```bash
-git clone <repo-url>
-cd receipt-printer
 cp firmware/include/secrets.h.example firmware/include/secrets.h
-```
-
-Edit `firmware/include/secrets.h` with your WiFi credentials:
-
-```cpp
-#define WIFI_SSID     "your-wifi-ssid"
-#define WIFI_PASSWORD  "your-wifi-password"
+# Edit secrets.h with your WiFi credentials
 ```
 
 ### 2. Flash firmware
@@ -45,270 +46,64 @@ Edit `firmware/include/secrets.h` with your WiFi credentials:
 Requires [PlatformIO](https://platformio.org/install/cli). Connect the ESP32 via USB:
 
 ```bash
-cd firmware
-pio run -e esp32 -t upload
+cd firmware && pio run -t upload
 ```
 
-On success the printer prints a startup receipt with its IP address and `printer.local`.
+On success the printer prints a startup receipt with its IP address.
 
-### 3. Install the CLI
+### 3. AI features (optional)
 
-Requires Python 3.10+:
-
-```bash
-cd cli
-pip install -e .
-```
-
-Verify:
-
-```bash
-rp status
-# Online | FW 1.0.0 | Uptime 42s
-```
-
-## Usage
-
-### Web UI
-
-Open **http://printer.local** in a browser. The web interface has a text box for quick messages, plus feed and cut buttons.
-
-### CLI commands
-
-Every command accepts `--printer URL` (or `-p`, or the `PRINTER_URL` env var) to override the default `http://printer.local`.
-
-```bash
-# Print text
-rp text "Hello World"
-rp text "BOLD CENTERED" --bold --align center --size 2
-
-# Print a QR code
-rp qr "https://example.com" --label "Scan me" --size 6
-
-# Print an image (auto-resized to 384px, dithered to 1-bit)
-rp image photo.png
-
-# Print a formatted note
-rp note "Grocery List" "Eggs, milk, bread, coffee"
-
-# Print a todo checklist
-rp todo "Morning" "Make bed" "Meditate" "Exercise"
-
-# Print a receipt
-# (use the HTTP API directly for receipts — see below)
-
-# Paper control
-rp feed          # feed 3 lines
-rp feed -n 6     # feed 6 lines
-rp cut           # cut paper
-
-# Send raw ESC/POS bytes (hex-encoded)
-rp raw "1b40"    # printer reset
-
-# Check status
-rp status
-```
-
-### HTTP API
-
-All endpoints are at `http://printer.local`.
-
-| Method | Path | Content-Type | Description |
-|--------|------|-------------|-------------|
-| `GET` | `/` | — | Web UI |
-| `GET` | `/status` | — | `{status, firmware, hostname, uptime_s}` |
-| `POST` | `/print/text` | `application/json` | Print formatted text |
-| `POST` | `/print/receipt` | `application/json` | Print a receipt |
-| `POST` | `/print/image` | `application/json` | Print a raster bitmap |
-| `POST` | `/print/qrcode` | `application/json` | Print a QR code |
-| `POST` | `/print/raw` | `application/json` | Send raw ESC/POS bytes |
-| `POST` | `/submit` | `form-data` | Quick print (used by web UI) |
-| `POST` | `/feed` | `form-data` | Feed paper |
-| `POST` | `/cut` | — | Cut paper |
-| `GET` | `/update` | — | OTA firmware upload form |
-| `POST` | `/update` | `multipart/form-data` | OTA firmware upload |
-
-#### Examples
-
-```bash
-# Print text
-curl -X POST http://printer.local/print/text \
-  -H "Content-Type: application/json" \
-  -d '{"text": "Hello!", "bold": true, "align": 1}'
-
-# Print receipt
-curl -X POST http://printer.local/print/receipt \
-  -H "Content-Type: application/json" \
-  -d '{
-    "title": "COFFEE SHOP",
-    "items": [
-      {"name": "Latte", "price": "$4.50"},
-      {"name": "Croissant", "price": "$3.00"}
-    ],
-    "total": "$7.50",
-    "footer": "Thank you!"
-  }'
-
-# Print QR code
-curl -X POST http://printer.local/print/qrcode \
-  -H "Content-Type: application/json" \
-  -d '{"data": "https://example.com", "label": "Scan me", "size": 6}'
-```
-
-## inkless-server (AI proxy)
-
-The AI features (Your Plot, Harvest, Talk Well Behind My Back, If You Were a Plant) require **inkless-server** — a lightweight Python service that holds the Anthropic API key and proxies AI requests. Without it, all direct print features still work.
-
-### Quick start (development)
+The AI modes require **inkless-server**, a lightweight proxy that holds your Anthropic API key:
 
 ```bash
 cd inkless-server
 cp .env.example .env
-# Edit .env and add your Anthropic API key
+# Edit .env — add your ANTHROPIC_API_KEY
 pip install -e .
-/usr/bin/python3 -m uvicorn server:app --host 0.0.0.0 --port 8100
+python -m uvicorn server:app --host 0.0.0.0 --port 8100
 ```
 
-Verify it's running:
-```bash
-curl http://localhost:8100/status
-# {"status":"online","printer_url":"http://printer.local","api_key_set":true}
-```
-
-### Firmware configuration
-
-The ESP32 needs to know where inkless-server is. Edit `firmware/include/secrets.h`:
+Then add the server URL to `secrets.h`:
 
 ```cpp
-#define INKLESS_SERVER_URL "http://YOUR_MAC_IP:8100"
+#define INKLESS_SERVER_URL "http://YOUR_IP:8100"
 ```
 
-Find your IP with `ipconfig getifaddr en0`, then flash with OTA (requires existing firmware on the device — see [OTA Firmware Updates](#ota-firmware-updates)): `cd firmware && pio run -e ota -t upload`
+Without inkless-server, all direct print features still work — only AI generation is unavailable.
 
-### Deploy on a Mac Studio (always-on)
-
-Create a launchd plist so inkless-server starts on boot and restarts on crash.
-
-Credentials (`ANTHROPIC_API_KEY`, `PRINTER_URL`) are read from `inkless-server/.env` automatically via `load_dotenv()` — never embed them in the plist. If you haven't set up `.env` yet:
+### 4. CLI (optional)
 
 ```bash
-cp inkless-server/.env.example inkless-server/.env
-# edit inkless-server/.env and fill in ANTHROPIC_API_KEY and PRINTER_URL
+cd cli && pip install -e .
+rp status
 ```
 
-Then create the plist:
-
-```bash
-cat > ~/Library/LaunchAgents/studio.inkless.server.plist << 'EOF'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>studio.inkless.server</string>
-    <key>ProgramArguments</key>
-    <array>
-        <string>/usr/bin/python3</string>
-        <string>-m</string>
-        <string>uvicorn</string>
-        <string>server:app</string>
-        <string>--host</string>
-        <string>0.0.0.0</string>
-        <string>--port</string>
-        <string>8100</string>
-    </array>
-    <key>WorkingDirectory</key>
-    <string>/path/to/receipt-printer/inkless-server</string>
-    <key>RunAtLoad</key>
-    <true/>
-    <key>KeepAlive</key>
-    <true/>
-    <key>StandardOutPath</key>
-    <string>/tmp/inkless-server.log</string>
-    <key>StandardErrorPath</key>
-    <string>/tmp/inkless-server.log</string>
-</dict>
-</plist>
-EOF
-```
-
-Then:
-```bash
-# Update WorkingDirectory in the plist to the absolute path of inkless-server/, then:
-launchctl load ~/Library/LaunchAgents/studio.inkless.server.plist    # enable
-launchctl unload ~/Library/LaunchAgents/studio.inkless.server.plist  # disable
-tail -f /tmp/inkless-server.log                                      # view logs
-```
-
-Update `INKLESS_SERVER_URL` in `secrets.h` to point to the Mac Studio's IP, then reflash the firmware (see [OTA Firmware Updates](#ota-firmware-updates)).
-
-## OTA Firmware Updates
-
-After the initial USB flash, all future updates can be done over WiFi:
-
-```bash
-# Option 1: PlatformIO OTA (builds + uploads)
-cd firmware
-pio run -e ota -t upload
-
-# Option 2: CLI (upload a pre-built .bin)
-rp update firmware/.pio/build/esp32/firmware.bin
-
-# Option 3: Browser
-# Open http://printer.local/update and upload the .bin file
-```
-
-The printer reboots automatically after a successful update. Run `rp status` after a few seconds to confirm it's back online.
-
-## Project Structure
+## Project structure
 
 ```
-receipt-printer/
-├── firmware/                       # ESP32 firmware (PlatformIO)
-│   ├── platformio.ini
-│   ├── include/
-│   │   ├── secrets.h.example
-│   │   └── secrets.h               # WiFi + inkless-server URL (gitignored)
-│   └── src/
-│       ├── main.cpp                # WiFi, mDNS, NTP, ArduinoOTA, startup
-│       ├── config.h                # Pin definitions, constants
-│       ├── escpos.h / .cpp         # ESC/POS printer driver
-│       ├── routes.h / .cpp         # HTTP API endpoints
-│       ├── web_ui.h                # Embedded HTML (PROGMEM)
-│       └── logo_data.h             # Logo bitmap (generated by CLI)
-├── inkless-server/                 # AI proxy service (Python/FastAPI)
-│   ├── pyproject.toml
-│   ├── server.py                   # FastAPI app (AI proxy endpoint)
-│   ├── .env.example
-│   └── .env                        # API key (gitignored)
-└── cli/                            # Command-line interface
-    ├── pyproject.toml
-    └── src/receipt_printer/
-        ├── main.py                 # Typer CLI (rp command)
-        ├── client.py               # HTTP client
-        ├── imaging.py              # Image → 1-bit raster bitmap
-        └── formatting.py           # Note/todo print templates
+firmware/          ESP32 firmware (PlatformIO, C++)
+inkless-server/    AI proxy (Python, FastAPI)
+cli/               Command-line tool (Python, Typer)
 ```
+
+## Make it yours
+
+| What | Where |
+|------|-------|
+| AI modes & prompts | `firmware/src/web_ui.h` |
+| AI provider | `inkless-server/server.py` (swap Claude for OpenAI, Ollama, etc.) |
+| Look & feel | `firmware/src/web_ui.h` (single HTML page, Tailwind CSS) |
+| CLI print templates | `cli/src/receipt_printer/formatting.py` |
+
+The ESC/POS driver, web server, and CLI are generic — they work with any ESC/POS thermal printer.
 
 ## Acknowledgments
 
-This project was inspired by and borrows techniques from:
+- **[Project Scribe](https://github.com/UrbanCircles/scribe/tree/main)** by UrbanCircles (MIT) — the project that motivated me to tinker around with the hardware. The concept of upside-down printing with reversed line order comes from Scribe (no code was directly copied). [3D model on MakerWorld.](https://makerworld.com/en/models/1577165-project-scribe#profileId-1670812)
+- **[Scribe Evolution](https://github.com/Pharkie/scribe-evolution/releases/tag/v0.2.0)** by Adam Knowles — a more advanced take with MQTT, LED effects, and multi-provider AI.
+- **[Josh Pham's receipt project](https://jpham.space/receipt)** — a friend's hack that got me started.
+- **[Good Hang podcast](https://open.spotify.com/show/1z20EiwuKoDiftKxMVLde1)** — where "Talk Well Behind Your Back" came from.
 
-- **[Scribe Evolution](https://github.com/Pharkie/scribe-evolution/releases/tag/v0.2.0)** by Adam Knowles — ESP32 thermal printer firmware with LittleFS config, MQTT remote printing, auth middleware, and AI content generation
-- **[Project Scribe](https://github.com/UrbanCircles/scribe/tree/main)** by UrbanCircles — the original project that started it all
-- **[3D model + project description](https://makerworld.com/en/models/1577165-project-scribe#profileId-1670812)** on MakerWorld
+## License
 
-The upside-down printing technique (ESC { + reverse line order) comes directly from Scribe.
-
-## Printer Specs
-
-| Spec | Value |
-|------|-------|
-| Print width | 48mm (384 dots) |
-| Resolution | 203 DPI (8 dots/mm) |
-| Characters/line | 32 |
-| Paper width | 58mm |
-| Interface | TTL UART 9600 baud |
-| Power | 5–9V DC |
-| Command set | ESC/POS |
-| Print speed | 50–90 mm/s |
+[CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/). See [LICENSE](LICENSE). Non-commercial use only — reach out if you'd like to use this commercially.
