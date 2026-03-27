@@ -2,7 +2,7 @@
 
 A wireless thermal receipt printer powered by an ESP32 and a QR204 58mm thermal print mechanism. Print text, images, QR codes, and AI-generated receipts over WiFi from a browser or the command line.
 
-Built for [Strebergarten](https://strebergarten.studio) — a design and product studio. The AI modes are garden-themed because that's us. Yours will be different.
+Built for [Strebergarten](https://strebergarten.studio), our innovation studio. The AI modes are garden-themed because that's us. Yours will be different and uniquely yours.
 
 ## What it does
 
@@ -32,7 +32,7 @@ The printer UART runs at **9600 baud** (8N1).
 
 ## Setup
 
-> **Note:** This project was built for a specific hardware setup and hasn't been tested as a standalone kit yet. The instructions below describe the general flow, but you may need to adapt things. If you run into issues, open an issue.
+> **Note:** This project was built for a specific hardware setup and hasn't been tested as a standalone kit yet. The instructions below describe the general flow, but you may need to adapt things. If you run into issues, open an issue (or more likely to get a quick response, ask your LLM-of-choice about it.)
 
 ### 1. Configure WiFi
 
@@ -99,11 +99,11 @@ The ESC/POS driver, web server, and CLI are generic — they work with any ESC/P
 
 ## Acknowledgments
 
-- **[Project Scribe](https://github.com/UrbanCircles/scribe/tree/main)** by UrbanCircles (MIT) — the project that motivated me to tinker around with the hardware. The concept of upside-down printing with reversed line order comes from Scribe (no code was directly copied). [3D model on MakerWorld.](https://makerworld.com/en/models/1577165-project-scribe#profileId-1670812)
-- **[Scribe Evolution](https://github.com/Pharkie/scribe-evolution/releases/tag/v0.2.0)** by Adam Knowles — a more advanced take with MQTT, LED effects, and multi-provider AI.
-- **[Josh Pham's receipt project](https://jpham.space/receipt)** — a friend's hack that got me started.
-- **[Good Hang podcast](https://open.spotify.com/show/1z20EiwuKoDiftKxMVLde1)** — where "Talk Well Behind Your Back" came from.
+- **[Project Scribe](https://github.com/UrbanCircles/scribe/tree/main)** by UrbanCircles (MIT). The concept of upside-down printing with reversed line order comes from Scribe (no code was directly copied). [3D model on MakerWorld.](https://makerworld.com/en/models/1577165-project-scribe#profileId-1670812)
+- **[Scribe Evolution](https://github.com/Pharkie/scribe-evolution/releases/tag/v0.2.0)** by Adam Knowles.
+- **[Josh Pham's receipt project](https://jpham.space/receipt)**, a friend's hack that got me inspired.
+- **[Good Hang podcast](https://open.spotify.com/show/1z20EiwuKoDiftKxMVLde1)**, where "Talk Well Behind Your Back" feature came from.
 
 ## License
 
-[CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/). See [LICENSE](LICENSE). Non-commercial use only — reach out if you'd like to use this commercially.
+[CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/). See [LICENSE](LICENSE). Non-commercial use only.
